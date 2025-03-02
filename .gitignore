@@ -36,3 +36,8 @@ build/
 /uploads/
 application-*.properties
 !application.properties
+
+### Gradle ###
+.gradle
+**/build/
+!src/**/build/
