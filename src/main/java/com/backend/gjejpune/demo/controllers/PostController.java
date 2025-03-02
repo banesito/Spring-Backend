@@ -35,6 +35,9 @@ import com.backend.gjejpune.demo.repository.PostRepository;
 import com.backend.gjejpune.demo.repository.UserRepository;
 import com.backend.gjejpune.demo.security.services.UserDetailsImpl;
 import com.backend.gjejpune.demo.service.FileStorageService;
+import com.backend.gjejpune.demo.service.FriendshipService;
+import com.backend.gjejpune.demo.repository.LikeRepository;
+import com.backend.gjejpune.demo.repository.CommentRepository;
 
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -58,6 +61,15 @@ public class PostController {
     @Autowired
     private FileStorageService fileStorageService;
     
+    @Autowired
+    private FriendshipService friendshipService;
+    
+    @Autowired
+    private LikeRepository likeRepository;
+    
+    @Autowired
+    private CommentRepository commentRepository;
+    
     // Get all posts (respecting privacy settings) with pagination
     @GetMapping
     public ResponseEntity<?> getAllPosts(
@@ -73,26 +85,43 @@ public class PostController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
+        User currentUser = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new RuntimeException("Error: User not found."));
+        
         // Create pageable object for pagination
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         
         // Get paginated posts
         Page<Post> postPage = postRepository.findAll(pageable);
         
-        // Filter posts based on privacy settings
+        // Filter posts based on privacy settings and friendship
         List<Post> filteredPosts = postPage.getContent().stream()
             .filter(post -> {
                 // Include post if:
                 // 1. It's not private, OR
                 // 2. Current user is the owner
-                // 3. User profile is not private OR current user is the owner
+                // 3. User profile is not private OR current user is the owner OR current user is a friend
                 boolean isOwner = post.getUser().getId().equals(currentUserId);
-                boolean isPostVisible = !post.isPrivate() || isOwner;
-                boolean isUserVisible = !post.getUser().isPrivateProfile() || isOwner;
+                boolean isFriend = friendshipService.areFriends(currentUserId, post.getUser().getId());
+                boolean isPostVisible = !post.isPrivate() || isOwner || isFriend;
+                boolean isUserVisible = !post.getUser().isPrivateProfile() || isOwner || isFriend;
                 
                 return isPostVisible && isUserVisible;
             })
             .collect(Collectors.toList());
+        
+        // Populate like and comment counts for each post
+        for (Post post : filteredPosts) {
+            post.setLikesCount(likeRepository.countByPost(post));
+            post.setCommentsCount(commentRepository.countByPost(post));
+            post.setLikedByCurrentUser(likeRepository.existsByUserAndPost(currentUser, post));
+        }
+        
+        // Create next page URL if not on the last page
+        String nextPageUrl = null;
+        if (!postPage.isLast()) {
+            nextPageUrl = "/api/posts?page=" + (page + 1) + "&size=" + size;
+        }
         
         PagedResponse<Post> response = new PagedResponse<>(
                 filteredPosts,
@@ -100,7 +129,8 @@ public class PostController {
                 filteredPosts.size(),
                 postPage.getTotalElements(),
                 postPage.getTotalPages(),
-                postPage.isLast()
+                postPage.isLast(),
+                nextPageUrl
         );
         
         return new ResponseEntity<>(response, HttpStatus.OK);
@@ -113,17 +143,26 @@ public class PostController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
+        User currentUser = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new RuntimeException("Error: User not found."));
+        
         Post post = postRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Error: Post not found."));
         
         // Check if user has permission to view this post
         boolean isOwner = post.getUser().getId().equals(currentUserId);
+        boolean isFriend = friendshipService.areFriends(currentUserId, post.getUser().getId());
         
-        if ((post.isPrivate() || post.getUser().isPrivateProfile()) && !isOwner) {
+        if ((post.isPrivate() || post.getUser().isPrivateProfile()) && !isOwner && !isFriend) {
             return ResponseEntity
                     .status(HttpStatus.FORBIDDEN)
                     .body(new MessageResponse("Error: You don't have permission to view this post."));
         }
+        
+        // Populate like and comment counts
+        post.setLikesCount(likeRepository.countByPost(post));
+        post.setCommentsCount(commentRepository.countByPost(post));
+        post.setLikedByCurrentUser(likeRepository.existsByUserAndPost(currentUser, post));
         
         return new ResponseEntity<>(post, HttpStatus.OK);
     }
@@ -151,13 +190,28 @@ public class PostController {
         // Get paginated posts for current user
         Page<Post> postPage = postRepository.findByUser(user, pageable);
         
+        // Populate like and comment counts for each post
+        List<Post> posts = postPage.getContent();
+        for (Post post : posts) {
+            post.setLikesCount(likeRepository.countByPost(post));
+            post.setCommentsCount(commentRepository.countByPost(post));
+            post.setLikedByCurrentUser(likeRepository.existsByUserAndPost(user, post));
+        }
+        
+        // Create next page URL if not on the last page
+        String nextPageUrl = null;
+        if (!postPage.isLast()) {
+            nextPageUrl = "/api/posts/my-posts?page=" + (page + 1) + "&size=" + size;
+        }
+        
         PagedResponse<Post> response = new PagedResponse<>(
-                postPage.getContent(),
+                posts,
                 postPage.getNumber(),
                 postPage.getSize(),
                 postPage.getTotalElements(),
                 postPage.getTotalPages(),
-                postPage.isLast()
+                postPage.isLast(),
+                nextPageUrl
         );
         
         return new ResponseEntity<>(response, HttpStatus.OK);
@@ -179,11 +233,15 @@ public class PostController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
+        User currentUser = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new RuntimeException("Error: User not found."));
+        
         User targetUser = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("Error: User not found."));
         
-        // Check if the target user has a private profile and is not the current user
-        if (targetUser.isPrivateProfile() && !userId.equals(currentUserId)) {
+        // Check if the target user has a private profile and is not the current user or a friend
+        boolean isFriend = friendshipService.areFriends(currentUserId, userId);
+        if (targetUser.isPrivateProfile() && !userId.equals(currentUserId) && !isFriend) {
             return ResponseEntity
                     .status(HttpStatus.FORBIDDEN)
                     .body(new MessageResponse("Error: This user has a private profile."));
@@ -197,11 +255,24 @@ public class PostController {
         
         List<Post> filteredPosts = postPage.getContent();
         
-        // If viewing someone else's posts, filter out private posts
-        if (!userId.equals(currentUserId)) {
+        // If viewing someone else's posts, filter out private posts unless you're a friend
+        if (!userId.equals(currentUserId) && !isFriend) {
             filteredPosts = filteredPosts.stream()
                     .filter(post -> !post.isPrivate())
                     .collect(Collectors.toList());
+        }
+        
+        // Populate like and comment counts for each post
+        for (Post post : filteredPosts) {
+            post.setLikesCount(likeRepository.countByPost(post));
+            post.setCommentsCount(commentRepository.countByPost(post));
+            post.setLikedByCurrentUser(likeRepository.existsByUserAndPost(currentUser, post));
+        }
+        
+        // Create next page URL if not on the last page
+        String nextPageUrl = null;
+        if (!postPage.isLast()) {
+            nextPageUrl = "/api/posts/user/" + userId + "?page=" + (page + 1) + "&size=" + size;
         }
         
         PagedResponse<Post> response = new PagedResponse<>(
@@ -210,7 +281,8 @@ public class PostController {
                 filteredPosts.size(),
                 postPage.getTotalElements(),
                 postPage.getTotalPages(),
-                postPage.isLast()
+                postPage.isLast(),
+                nextPageUrl
         );
         
         return new ResponseEntity<>(response, HttpStatus.OK);

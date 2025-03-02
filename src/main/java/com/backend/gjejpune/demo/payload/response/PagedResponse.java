@@ -9,6 +9,7 @@ public class PagedResponse<T> {
     private long totalElements;
     private int totalPages;
     private boolean last;
+    private String nextPageUrl;
 
     public PagedResponse() {
     }
@@ -20,6 +21,17 @@ public class PagedResponse<T> {
         this.totalElements = totalElements;
         this.totalPages = totalPages;
         this.last = last;
+        this.nextPageUrl = null;
+    }
+
+    public PagedResponse(List<T> content, int page, int size, long totalElements, int totalPages, boolean last, String nextPageUrl) {
+        this.content = content;
+        this.page = page;
+        this.size = size;
+        this.totalElements = totalElements;
+        this.totalPages = totalPages;
+        this.last = last;
+        this.nextPageUrl = nextPageUrl;
     }
 
     public List<T> getContent() {
@@ -68,5 +80,13 @@ public class PagedResponse<T> {
 
     public void setLast(boolean last) {
         this.last = last;
+    }
+
+    public String getNextPageUrl() {
+        return nextPageUrl;
+    }
+
+    public void setNextPageUrl(String nextPageUrl) {
+        this.nextPageUrl = nextPageUrl;
     }
 } 

@@ -1,10 +1,13 @@
 package com.backend.gjejpune.demo.model;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import jakarta.persistence.Column;
@@ -15,7 +18,9 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -49,6 +54,23 @@ public class Post {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+    
+    @JsonIgnore
+    @OneToMany(mappedBy = "post", fetch = FetchType.LAZY)
+    private List<Like> likes = new ArrayList<>();
+    
+    @JsonIgnore
+    @OneToMany(mappedBy = "post", fetch = FetchType.LAZY)
+    private List<Comment> comments = new ArrayList<>();
+    
+    @Transient
+    private long likesCount;
+    
+    @Transient
+    private long commentsCount;
+    
+    @Transient
+    private boolean likedByCurrentUser;
 
     public Post() {
     }
@@ -137,5 +159,45 @@ public class Post {
     
     public void setImageUrl(String imageUrl) {
         this.imageUrl = imageUrl;
+    }
+    
+    public List<Like> getLikes() {
+        return likes;
+    }
+    
+    public void setLikes(List<Like> likes) {
+        this.likes = likes;
+    }
+    
+    public List<Comment> getComments() {
+        return comments;
+    }
+    
+    public void setComments(List<Comment> comments) {
+        this.comments = comments;
+    }
+    
+    public long getLikesCount() {
+        return likesCount;
+    }
+    
+    public void setLikesCount(long likesCount) {
+        this.likesCount = likesCount;
+    }
+    
+    public long getCommentsCount() {
+        return commentsCount;
+    }
+    
+    public void setCommentsCount(long commentsCount) {
+        this.commentsCount = commentsCount;
+    }
+    
+    public boolean isLikedByCurrentUser() {
+        return likedByCurrentUser;
+    }
+    
+    public void setLikedByCurrentUser(boolean likedByCurrentUser) {
+        this.likedByCurrentUser = likedByCurrentUser;
     }
 } 
