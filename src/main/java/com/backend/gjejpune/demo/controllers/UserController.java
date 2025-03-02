@@ -22,6 +22,7 @@ import com.backend.gjejpune.demo.payload.response.MessageResponse;
 import com.backend.gjejpune.demo.repository.UserRepository;
 import com.backend.gjejpune.demo.security.services.UserDetailsImpl;
 import com.backend.gjejpune.demo.service.FileStorageService;
+import com.backend.gjejpune.demo.service.FriendshipService;
 
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -41,6 +42,9 @@ public class UserController {
     
     @Autowired
     FileStorageService fileStorageService;
+    
+    @Autowired
+    FriendshipService friendshipService;
     
     @GetMapping("/my-profile")
     public ResponseEntity<?> getUserProfile() {
@@ -62,11 +66,17 @@ public class UserController {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("Error: User not found."));
         
-        // If the user has a private profile and is not the current user, return a forbidden response
+        // If the user has a private profile and is not the current user, check friendship status
         if (user.isPrivateProfile() && !userId.equals(currentUserId)) {
-            return ResponseEntity
-                    .status(403)
-                    .body(new MessageResponse("Error: This user has a private profile."));
+            // Check if users are friends
+            boolean isFriend = friendshipService.areFriends(currentUserId, userId);
+            
+            // If not friends, return a forbidden response
+            if (!isFriend) {
+                return ResponseEntity
+                        .status(403)
+                        .body(new MessageResponse("Error: This user has a private profile."));
+            }
         }
         
         return ResponseEntity.ok(user);
