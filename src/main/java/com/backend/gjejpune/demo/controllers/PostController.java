@@ -109,16 +109,15 @@ public class PostController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long userId = userDetails.getId();
         
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(postService.createPost(postRequest, userId));
+        return postService.createPost(postRequest, userId);
     }
     
     // Create a new post with image upload
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> createPostWithImage(
-            @RequestParam("title") String title,
+            @RequestParam(value = "title", required = false) String title,
             @RequestParam("content") String content,
-            @RequestParam(value = "isPrivate", defaultValue = "false") boolean isPrivate,
+            @RequestParam(value = "isPrivate", defaultValue = "false") Boolean isPrivate,
             @RequestParam(value = "image", required = false) MultipartFile image) {
         
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -152,6 +151,24 @@ public class PostController {
         Long currentUserId = userDetails.getId();
         
         return postService.updatePostWithImage(id, title, content, isPrivate, image, currentUserId);
+    }
+    
+    // Get feed posts (posts from friends)
+    @GetMapping("/feed")
+    public ResponseEntity<?> getFeedPosts(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "30") int size) {
+        
+        // Validate and limit page size
+        if (size > MAX_PAGE_SIZE) {
+            size = MAX_PAGE_SIZE;
+        }
+        
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        Long currentUserId = userDetails.getId();
+        
+        return postService.getFeedPosts(page, size, currentUserId);
     }
     
     // Delete a post

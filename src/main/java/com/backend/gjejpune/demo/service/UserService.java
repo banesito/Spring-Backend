@@ -1,5 +1,7 @@
 package com.backend.gjejpune.demo.service;
 
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -8,12 +10,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.backend.gjejpune.demo.model.User;
 import com.backend.gjejpune.demo.payload.request.UpdateProfileRequest;
 import com.backend.gjejpune.demo.payload.response.MessageResponse;
-import com.backend.gjejpune.demo.payload.response.UserResponse;
+import com.backend.gjejpune.demo.payload.response.UserProfileResponse;
 import com.backend.gjejpune.demo.repository.UserRepository;
 import com.backend.gjejpune.demo.exception.ForbiddenProfileException;
 
@@ -32,144 +35,195 @@ public class UserService {
     @Autowired
     private PasswordEncoder passwordEncoder;
     
+    @Autowired
+    private PermissionService permissionService;
+    
     /**
      * Get current user profile
      */
-    public User getCurrentUserProfile(Long currentUserId) {
-        return userRepository.findById(currentUserId)
+    public ResponseEntity<?> getCurrentUserProfile(Long currentUserId) {
+        User user = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new RuntimeException("Error: User not found."));
+
+        UserProfileResponse profileResponse = new UserProfileResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getFullName(),
+                user.getBio(),
+                user.getProfileImageUrl(),
+                user.isPrivateProfile(),
+                true // isCurrentUser
+        );
+
+        return ResponseEntity.ok(profileResponse);
     }
     
     /**
      * Get user profile by ID
      */
-    public User getUserProfileById(Long userId, Long currentUserId) {
+    public ResponseEntity<?> getUserProfileById(Long userId, Long currentUserId) {
+        // Check if the requested user exists
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("Error: User not found."));
-        
-        // Check if the user has a private profile and is not the current user or a friend
-        boolean isFriend = friendshipService.areFriends(currentUserId, userId);
-        if (user.isPrivateProfile() && !userId.equals(currentUserId) && !isFriend) {
-            throw new ForbiddenProfileException("Error: This user has a private profile.");
+
+        boolean isCurrentUser = userId.equals(currentUserId);
+
+        // If not current user and profile is private, check if they are friends
+        if (!isCurrentUser && user.isPrivateProfile()) {
+            if (!permissionService.canAccessUserProfile(user, currentUserId)) {
+                return ResponseEntity
+                        .status(HttpStatus.FORBIDDEN)
+                        .body(new MessageResponse("This profile is private."));
+            }
         }
-        
-        return user;
+
+        UserProfileResponse profileResponse = new UserProfileResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getFullName(),
+                user.getBio(),
+                user.getProfileImageUrl(),
+                user.isPrivateProfile(),
+                isCurrentUser
+        );
+
+        return ResponseEntity.ok(profileResponse);
     }
     
     /**
      * Update user profile
      */
-    public String updateUserProfile(UpdateProfileRequest updateProfileRequest, Long currentUserId) {
+    @Transactional
+    public ResponseEntity<?> updateUserProfile(UpdateProfileRequest updateProfileRequest, Long currentUserId) {
         User user = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new RuntimeException("Error: User not found."));
-        
-        boolean privacyChanged = false;
-        boolean newPrivacyValue = false;
-        boolean avatarChanged = false;
-        
-        // Update phone number if provided
-        if (updateProfileRequest.getPhoneNumber() != null) {
-            user.setPhoneNumber(updateProfileRequest.getPhoneNumber());
+
+        // Update user profile fields
+        if (updateProfileRequest.getFullName() != null) {
+            user.setFullName(updateProfileRequest.getFullName());
         }
-        
-        // Update avatar if provided
-        if (updateProfileRequest.getAvatarUrl() != null) {
-            user.setAvatarUrl(updateProfileRequest.getAvatarUrl());
-            avatarChanged = true;
+
+        if (updateProfileRequest.getBio() != null) {
+            user.setBio(updateProfileRequest.getBio());
         }
-        
-        // Update privacy setting only if explicitly provided in the request
-        if (updateProfileRequest.isPrivateProfileExplicitlySet()) {
-            boolean oldValue = user.isPrivateProfile();
-            boolean newValue = updateProfileRequest.getIsPrivateProfile();
-            
-            if (oldValue != newValue) {
-                privacyChanged = true;
-                newPrivacyValue = newValue;
-                user.setPrivateProfile(newValue);
-            }
+
+        if (updateProfileRequest.getPrivateProfile() != null) {
+            user.setPrivateProfile(updateProfileRequest.getPrivateProfile());
         }
-        
+
         userRepository.save(user);
-        
-        String message = "Profile updated successfully!";
-        if (avatarChanged) {
-            message += " Your avatar has been updated.";
-        }
-        if (privacyChanged) {
-            if (newPrivacyValue) {
-                message += " Your profile is now private. Only you can see your posts.";
-            } else {
-                message += " Your profile is now public. Others can see your public posts.";
-            }
-        }
-        
-        return message;
+
+        return ResponseEntity.ok(new MessageResponse("Profile updated successfully!"));
     }
     
     /**
-     * Update user profile with image upload
+     * Update user profile with image
      */
-    public String updateUserProfileWithImage(MultipartFile file, Long currentUserId) {
+    @Transactional
+    public ResponseEntity<?> updateUserProfileWithImage(
+            String fullName,
+            String bio,
+            Boolean privateProfile,
+            MultipartFile profileImage,
+            Long currentUserId) {
+
         User user = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new RuntimeException("Error: User not found."));
-        
-        // Check if file is an image
-        if (!file.getContentType().startsWith("image/")) {
-            throw new RuntimeException("Error: Only image files are allowed for avatars.");
+
+        // Update user profile fields
+        if (fullName != null) {
+            user.setFullName(fullName);
         }
-        
-        // Store the file and get the URL
-        String fileUrl = fileStorageService.storeFile(file);
-        
-        // Update user's avatar URL
-        user.setAvatarUrl(fileUrl);
+
+        if (bio != null) {
+            user.setBio(bio);
+        }
+
+        if (privateProfile != null) {
+            user.setPrivateProfile(privateProfile);
+        }
+
+        // Handle profile image upload if provided
+        if (profileImage != null && !profileImage.isEmpty()) {
+            try {
+                // Validate image type
+                String contentType = profileImage.getContentType();
+                if (contentType == null || !(contentType.equals("image/jpeg") || contentType.equals("image/png") || contentType.equals("image/jpg"))) {
+                    return ResponseEntity
+                            .status(HttpStatus.BAD_REQUEST)
+                            .body(new MessageResponse("Error: Only JPEG, JPG and PNG images are allowed."));
+                }
+
+                // Save the image and update the user's profile image URL
+                String imageUrl = fileStorageService.storeFile(profileImage, "profile_images");
+                user.setProfileImageUrl(imageUrl);
+            } catch (RuntimeException e) {
+                return ResponseEntity
+                        .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(new MessageResponse("Error: Could not upload profile image."));
+            }
+        }
+
         userRepository.save(user);
-        
-        return "Avatar uploaded successfully! Your profile has been updated.";
+
+        return ResponseEntity.ok(new MessageResponse("Profile updated successfully!"));
     }
     
     /**
      * Change user password
      */
-    public void changePassword(String currentPassword, String newPassword, Long currentUserId) {
+    @Transactional
+    public ResponseEntity<?> changePassword(String currentPassword, String newPassword, Long currentUserId) {
         User user = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new RuntimeException("Error: User not found."));
-        
+
         // Verify current password
         if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
-            throw new RuntimeException("Error: Current password is incorrect.");
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(new MessageResponse("Error: Current password is incorrect."));
         }
-        
+
         // Update password
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+
+        return ResponseEntity.ok(new MessageResponse("Password changed successfully!"));
     }
     
     /**
      * Search users by username or full name
      */
-    public List<User> searchUsers(String query, Long currentUserId) {
-        // This is a simplified implementation - you'll need to adjust based on your actual UserRepository methods
-        List<User> users = userRepository.findAll().stream()
-                .filter(user -> 
-                    user.getUsername().contains(query) || 
-                    (user.getPhoneNumber() != null && user.getPhoneNumber().contains(query)))
-                .collect(Collectors.toList());
-        
-        // Filter out users with private profiles who are not friends with the current user
-        return users.stream()
-                .filter(user -> {
-                    if (!user.isPrivateProfile()) {
-                        return true;
-                    }
-                    
-                    if (user.getId().equals(currentUserId)) {
-                        return true;
-                    }
-                    
-                    return friendshipService.areFriends(currentUserId, user.getId());
-                })
-                .collect(Collectors.toList());
+    public ResponseEntity<?> searchUsers(String query, Long currentUserId) {
+        if (query == null || query.trim().isEmpty()) {
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(new MessageResponse("Error: Search query cannot be empty."));
+        }
+
+        List<User> users = userRepository.findByUsernameContainingIgnoreCaseOrFullNameContainingIgnoreCase(query, query);
+        List<UserProfileResponse> userProfiles = new ArrayList<>();
+
+        for (User user : users) {
+            boolean isCurrentUser = user.getId().equals(currentUserId);
+            
+            // Skip private profiles that the current user cannot access
+            if (!isCurrentUser && user.isPrivateProfile() && !permissionService.canAccessUserProfile(user, currentUserId)) {
+                continue;
+            }
+
+            UserProfileResponse profileResponse = new UserProfileResponse(
+                    user.getId(),
+                    user.getUsername(),
+                    user.getFullName(),
+                    user.getBio(),
+                    user.getProfileImageUrl(),
+                    user.isPrivateProfile(),
+                    isCurrentUser
+            );
+            userProfiles.add(profileResponse);
+        }
+
+        return ResponseEntity.ok(userProfiles);
     }
 } 

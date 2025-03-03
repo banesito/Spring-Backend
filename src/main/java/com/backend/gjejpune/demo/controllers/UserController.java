@@ -44,9 +44,7 @@ public class UserController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
-        User user = userService.getCurrentUserProfile(currentUserId);
-        
-        return ResponseEntity.ok(user);
+        return userService.getCurrentUserProfile(currentUserId);
     }
     
     @GetMapping("/{userId}")
@@ -55,8 +53,7 @@ public class UserController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
-        User user = userService.getUserProfileById(userId, currentUserId);
-        return ResponseEntity.ok(user);
+        return userService.getUserProfileById(userId, currentUserId);
     }
     
     @PatchMapping("/my-profile")
@@ -65,20 +62,20 @@ public class UserController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
-        String message = userService.updateUserProfile(updateProfileRequest, currentUserId);
-        
-        return ResponseEntity.ok(new MessageResponse(message));
+        return userService.updateUserProfile(updateProfileRequest, currentUserId);
     }
     
     @PostMapping("/avatar")
-    public ResponseEntity<?> uploadAvatar(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<?> uploadAvatar(
+            @RequestParam(value = "fullName", required = false) String fullName,
+            @RequestParam(value = "bio", required = false) String bio,
+            @RequestParam(value = "privateProfile", required = false) Boolean privateProfile,
+            @RequestParam("file") MultipartFile file) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
-        String message = userService.updateUserProfileWithImage(file, currentUserId);
-        
-        return ResponseEntity.ok(new MessageResponse(message));
+        return userService.updateUserProfileWithImage(fullName, bio, privateProfile, file, currentUserId);
     }
     
     @GetMapping("/search")
@@ -87,7 +84,7 @@ public class UserController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
-        return ResponseEntity.ok(userService.searchUsers(query, currentUserId));
+        return userService.searchUsers(query, currentUserId);
     }
     
     @PostMapping("/change-password")
@@ -96,8 +93,6 @@ public class UserController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
-        userService.changePassword(request.getCurrentPassword(), request.getNewPassword(), currentUserId);
-        
-        return ResponseEntity.ok(new MessageResponse("Password changed successfully"));
+        return userService.changePassword(request.getCurrentPassword(), request.getNewPassword(), currentUserId);
     }
 } 

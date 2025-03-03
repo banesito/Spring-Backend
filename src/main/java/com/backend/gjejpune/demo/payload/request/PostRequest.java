@@ -7,7 +7,6 @@ import jakarta.validation.constraints.Size;
 
 public class PostRequest {
     
-    @NotBlank
     @Size(max = 100)
     private String title;
     

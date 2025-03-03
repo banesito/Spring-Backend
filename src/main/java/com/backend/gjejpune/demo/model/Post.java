@@ -31,7 +31,6 @@ public class Post {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotBlank
     @Size(max = 100)
     private String title;
 
@@ -199,5 +198,22 @@ public class Post {
     
     public void setLikedByCurrentUser(boolean likedByCurrentUser) {
         this.likedByCurrentUser = likedByCurrentUser;
+    }
+
+    // Alias methods for compatibility with refactored code
+    public void setLikeCount(long likeCount) {
+        this.likesCount = likeCount;
+    }
+    
+    public void setCommentCount(long commentCount) {
+        this.commentsCount = commentCount;
+    }
+    
+    // Constructor for the refactored code
+    public Post(String content, String imageUrl, boolean isPrivate, User user) {
+        this.content = content;
+        this.imageUrl = imageUrl;
+        this.isPrivate = isPrivate;
+        this.user = user;
     }
 } 

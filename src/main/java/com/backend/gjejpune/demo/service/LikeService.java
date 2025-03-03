@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.backend.gjejpune.demo.model.Like;
 import com.backend.gjejpune.demo.model.Post;
@@ -31,9 +32,13 @@ public class LikeService {
     @Autowired
     private FriendshipService friendshipService;
     
+    @Autowired
+    private PermissionService permissionService;
+    
     /**
      * Like a post
      */
+    @Transactional
     public ResponseEntity<?> likePost(Long postId, Long currentUserId) {
         User user = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new RuntimeException("Error: User not found."));
@@ -42,10 +47,7 @@ public class LikeService {
                 .orElseThrow(() -> new RuntimeException("Error: Post not found."));
         
         // Check if user has permission to like this post
-        boolean isOwner = post.getUser().getId().equals(currentUserId);
-        boolean isFriend = friendshipService.areFriends(currentUserId, post.getUser().getId());
-        
-        if ((post.isPrivate() || post.getUser().isPrivateProfile()) && !isOwner && !isFriend) {
+        if (!permissionService.canAccessPost(post, currentUserId)) {
             return ResponseEntity
                     .status(HttpStatus.FORBIDDEN)
                     .body(new MessageResponse("Error: You don't have permission to like this post."));
@@ -73,6 +75,7 @@ public class LikeService {
     /**
      * Unlike a post
      */
+    @Transactional
     public ResponseEntity<?> unlikePost(Long postId, Long currentUserId) {
         User user = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new RuntimeException("Error: User not found."));
@@ -81,10 +84,7 @@ public class LikeService {
                 .orElseThrow(() -> new RuntimeException("Error: Post not found."));
         
         // Check if user has permission to unlike this post
-        boolean isOwner = post.getUser().getId().equals(currentUserId);
-        boolean isFriend = friendshipService.areFriends(currentUserId, post.getUser().getId());
-        
-        if ((post.isPrivate() || post.getUser().isPrivateProfile()) && !isOwner && !isFriend) {
+        if (!permissionService.canAccessPost(post, currentUserId)) {
             return ResponseEntity
                     .status(HttpStatus.FORBIDDEN)
                     .body(new MessageResponse("Error: You don't have permission to unlike this post."));
@@ -118,10 +118,7 @@ public class LikeService {
                 .orElseThrow(() -> new RuntimeException("Error: Post not found."));
         
         // Check if user has permission to view this post
-        boolean isOwner = post.getUser().getId().equals(currentUserId);
-        boolean isFriend = friendshipService.areFriends(currentUserId, post.getUser().getId());
-        
-        if ((post.isPrivate() || post.getUser().isPrivateProfile()) && !isOwner && !isFriend) {
+        if (!permissionService.canAccessPost(post, currentUserId)) {
             return ResponseEntity
                     .status(HttpStatus.FORBIDDEN)
                     .body(new MessageResponse("Error: You don't have permission to view this post."));
@@ -144,10 +141,7 @@ public class LikeService {
                 .orElseThrow(() -> new RuntimeException("Error: Post not found."));
         
         // Check if user has permission to view this post's likes
-        boolean isOwner = post.getUser().getId().equals(currentUserId);
-        boolean isFriend = friendshipService.areFriends(currentUserId, post.getUser().getId());
-        
-        if ((post.isPrivate() || post.getUser().isPrivateProfile()) && !isOwner && !isFriend) {
+        if (!permissionService.canAccessPost(post, currentUserId)) {
             return ResponseEntity
                     .status(HttpStatus.FORBIDDEN)
                     .body(new MessageResponse("Error: You don't have permission to view likes for this post."));
@@ -169,14 +163,7 @@ public class LikeService {
         
         // Filter out posts that the user doesn't have permission to view
         likedPosts = likedPosts.stream()
-                .filter(post -> {
-                    boolean isOwner = post.getUser().getId().equals(currentUserId);
-                    boolean isFriend = friendshipService.areFriends(currentUserId, post.getUser().getId());
-                    boolean isPostVisible = !post.isPrivate() || isOwner || isFriend;
-                    boolean isUserVisible = !post.getUser().isPrivateProfile() || isOwner || isFriend;
-                    
-                    return isPostVisible && isUserVisible;
-                })
+                .filter(post -> permissionService.canAccessPost(post, currentUserId))
                 .toList();
         
         return ResponseEntity.ok(likedPosts);
@@ -193,10 +180,7 @@ public class LikeService {
                 .orElseThrow(() -> new RuntimeException("Error: Post not found."));
         
         // Check if user has permission to view this post's likes
-        boolean isOwner = post.getUser().getId().equals(currentUserId);
-        boolean isFriend = friendshipService.areFriends(currentUserId, post.getUser().getId());
-        
-        if ((post.isPrivate() || post.getUser().isPrivateProfile()) && !isOwner && !isFriend) {
+        if (!permissionService.canAccessPost(post, currentUserId)) {
             return ResponseEntity
                     .status(HttpStatus.FORBIDDEN)
                     .body(new MessageResponse("Error: You don't have permission to view likes for this post."));

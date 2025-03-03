@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.backend.gjejpune.demo.model.Friendship;
 import com.backend.gjejpune.demo.model.Friendship.FriendshipStatus;
@@ -25,6 +26,7 @@ public class FriendshipService {
     /**
      * Send a friend request from one user to another
      */
+    @Transactional
     public Friendship sendFriendRequest(Long requesterId, Long addresseeId) {
         // Check if users exist
         User requester = userRepository.findById(requesterId)
@@ -71,6 +73,7 @@ public class FriendshipService {
     /**
      * Accept a friend request
      */
+    @Transactional
     public Friendship acceptFriendRequest(Long friendshipId, Long userId) {
         Friendship friendship = friendshipRepository.findById(friendshipId)
                 .orElseThrow(() -> new RuntimeException("Error: Friendship not found."));
@@ -92,6 +95,7 @@ public class FriendshipService {
     /**
      * Reject a friend request
      */
+    @Transactional
     public Friendship rejectFriendRequest(Long friendshipId, Long userId) {
         Friendship friendship = friendshipRepository.findById(friendshipId)
                 .orElseThrow(() -> new RuntimeException("Error: Friendship not found."));
@@ -113,6 +117,7 @@ public class FriendshipService {
     /**
      * Cancel a friend request
      */
+    @Transactional
     public void cancelFriendRequest(Long friendshipId, Long userId) {
         Friendship friendship = friendshipRepository.findById(friendshipId)
                 .orElseThrow(() -> new RuntimeException("Error: Friendship not found."));
@@ -133,13 +138,15 @@ public class FriendshipService {
     /**
      * Unfriend a user
      */
+    @Transactional
     public void unfriend(Long userId, Long friendId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("Error: User not found."));
         
         User friend = userRepository.findById(friendId)
-                .orElseThrow(() -> new RuntimeException("Error: Friend user not found."));
+                .orElseThrow(() -> new RuntimeException("Error: Friend not found."));
         
+        // Check if they are friends
         Optional<Friendship> existingFriendship = friendshipRepository.findFriendshipBetweenUsers(user, friend);
         
         if (existingFriendship.isPresent()) {
@@ -151,7 +158,7 @@ public class FriendshipService {
                 throw new RuntimeException("Error: Users are not friends.");
             }
         } else {
-            throw new RuntimeException("Error: Friendship not found.");
+            throw new RuntimeException("Error: Users are not friends.");
         }
     }
     
@@ -182,16 +189,29 @@ public class FriendshipService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("Error: User not found."));
         
-        List<Friendship> friendships = friendshipRepository.findAcceptedFriendshipsForUser(user);
+        // Get friendships where user is requester and status is accepted
+        List<User> friendsAsRequester = friendshipRepository.findByRequesterAndStatus(user, FriendshipStatus.ACCEPTED)
+                .stream()
+                .map(Friendship::getAddressee)
+                .collect(Collectors.toList());
         
-        return friendships.stream()
-                .map(friendship -> {
-                    if (friendship.getRequester().getId().equals(userId)) {
-                        return friendship.getAddressee();
-                    } else {
-                        return friendship.getRequester();
-                    }
-                })
+        // Get friendships where user is addressee and status is accepted
+        List<User> friendsAsAddressee = friendshipRepository.findByAddresseeAndStatus(user, FriendshipStatus.ACCEPTED)
+                .stream()
+                .map(Friendship::getRequester)
+                .collect(Collectors.toList());
+        
+        // Combine both lists
+        friendsAsRequester.addAll(friendsAsAddressee);
+        return friendsAsRequester;
+    }
+    
+    /**
+     * Get IDs of all friends of a user
+     */
+    public List<Long> getFriendIds(Long userId) {
+        return getFriends(userId).stream()
+                .map(User::getId)
                 .collect(Collectors.toList());
     }
     
@@ -233,10 +253,10 @@ public class FriendshipService {
                     return "REQUEST_RECEIVED";
                 }
             } else {
-                return "NONE";
+                return "NOT_FRIENDS";
             }
         } else {
-            return "NONE";
+            return "NOT_FRIENDS";
         }
     }
 } 

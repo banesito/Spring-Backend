@@ -42,6 +42,12 @@ public class User {
     @Column(columnDefinition = "TEXT")
     private String avatarUrl;
     
+    @Size(max = 100)
+    private String fullName;
+    
+    @Column(columnDefinition = "TEXT")
+    private String bio;
+    
     @JsonProperty("isPrivateProfile")
     private boolean isPrivateProfile = false;
     
@@ -133,5 +139,29 @@ public class User {
     
     public void setAvatarUrl(String avatarUrl) {
         this.avatarUrl = avatarUrl;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+    
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+    
+    public String getBio() {
+        return bio;
+    }
+    
+    public void setBio(String bio) {
+        this.bio = bio;
+    }
+    
+    public String getProfileImageUrl() {
+        return avatarUrl;
+    }
+    
+    public void setProfileImageUrl(String profileImageUrl) {
+        this.avatarUrl = profileImageUrl;
     }
 } 

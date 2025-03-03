@@ -45,7 +45,24 @@ public class FileStorageService {
         }
     }
     
+    /**
+     * Store a file in the default upload directory
+     * 
+     * @param file The file to store
+     * @return The URL of the stored file
+     */
     public String storeFile(MultipartFile file) {
+        return storeFile(file, null);
+    }
+    
+    /**
+     * Store a file in a specific subdirectory of the upload directory
+     * 
+     * @param file The file to store
+     * @param subDirectory The subdirectory to store the file in (e.g., "profile_images", "post_images")
+     * @return The URL of the stored file
+     */
+    public String storeFile(MultipartFile file, String subDirectory) {
         // Normalize file name
         String originalFileName = StringUtils.cleanPath(file.getOriginalFilename());
         
@@ -62,17 +79,26 @@ public class FileStorageService {
             }
             String uniqueFileName = UUID.randomUUID().toString() + fileExtension;
             
+            // Create subdirectory if specified
+            Path targetPath = this.fileStoragePath;
+            if (subDirectory != null && !subDirectory.isEmpty()) {
+                targetPath = this.fileStoragePath.resolve(subDirectory);
+                Files.createDirectories(targetPath);
+            }
+            
             // Copy file to the target location (replacing existing file with the same name)
-            Path targetLocation = this.fileStoragePath.resolve(uniqueFileName);
+            Path targetLocation = targetPath.resolve(uniqueFileName);
             Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
             
             // Create a URL for the file
             String fileUrl = ServletUriComponentsBuilder.fromCurrentContextPath()
                     .path("/api/files/")
+                    .path(subDirectory != null && !subDirectory.isEmpty() ? subDirectory + "/" : "")
                     .path(uniqueFileName)
                     .toUriString();
             
-            logger.info("Stored file: {} as {}", originalFileName, uniqueFileName);
+            logger.info("Stored file: {} as {} in {}", originalFileName, uniqueFileName, 
+                    subDirectory != null ? subDirectory : "default directory");
             return fileUrl;
             
         } catch (IOException ex) {

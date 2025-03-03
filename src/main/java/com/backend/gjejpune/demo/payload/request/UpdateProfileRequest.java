@@ -11,6 +11,11 @@ public class UpdateProfileRequest {
     
     private String avatarUrl;
     
+    @Size(max = 100)
+    private String fullName;
+    
+    private String bio;
+    
     @JsonProperty("isPrivateProfile")
     private Boolean isPrivateProfile;
     
@@ -32,6 +37,22 @@ public class UpdateProfileRequest {
         this.avatarUrl = avatarUrl;
     }
     
+    public String getFullName() {
+        return fullName;
+    }
+    
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+    
+    public String getBio() {
+        return bio;
+    }
+    
+    public void setBio(String bio) {
+        this.bio = bio;
+    }
+    
     @JsonProperty("isPrivateProfile")
     public Boolean getIsPrivateProfile() {
         return isPrivateProfile;
@@ -45,5 +66,10 @@ public class UpdateProfileRequest {
     
     public boolean isPrivateProfileExplicitlySet() {
         return isPrivateProfileExplicitlySet;
+    }
+    
+    // Alias for compatibility with refactored code
+    public Boolean getPrivateProfile() {
+        return isPrivateProfile;
     }
 } 
