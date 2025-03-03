@@ -28,11 +28,8 @@ import com.backend.gjejpune.demo.model.User;
 import com.backend.gjejpune.demo.payload.request.CommentRequest;
 import com.backend.gjejpune.demo.payload.response.MessageResponse;
 import com.backend.gjejpune.demo.payload.response.PagedResponse;
-import com.backend.gjejpune.demo.repository.CommentRepository;
-import com.backend.gjejpune.demo.repository.PostRepository;
-import com.backend.gjejpune.demo.repository.UserRepository;
 import com.backend.gjejpune.demo.security.services.UserDetailsImpl;
-import com.backend.gjejpune.demo.service.FriendshipService;
+import com.backend.gjejpune.demo.service.CommentService;
 
 import jakarta.validation.Valid;
 
@@ -44,16 +41,7 @@ public class CommentController {
     private static final int MAX_PAGE_SIZE = 30;
     
     @Autowired
-    private CommentRepository commentRepository;
-    
-    @Autowired
-    private PostRepository postRepository;
-    
-    @Autowired
-    private UserRepository userRepository;
-    
-    @Autowired
-    private FriendshipService friendshipService;
+    private CommentService commentService;
     
     /**
      * Create a new comment on a post
@@ -64,29 +52,7 @@ public class CommentController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
-        // Get current user
-        User user = userRepository.findById(currentUserId)
-                .orElseThrow(() -> new RuntimeException("Error: User not found."));
-        
-        // Get post
-        Post post = postRepository.findById(postId)
-                .orElseThrow(() -> new RuntimeException("Error: Post not found."));
-        
-        // Check if user has permission to view this post
-        boolean isOwner = post.getUser().getId().equals(currentUserId);
-        boolean isFriend = friendshipService.areFriends(currentUserId, post.getUser().getId());
-        
-        if ((post.isPrivate() || post.getUser().isPrivateProfile()) && !isOwner && !isFriend) {
-            return ResponseEntity
-                    .status(HttpStatus.FORBIDDEN)
-                    .body(new MessageResponse("Error: You don't have permission to comment on this post."));
-        }
-        
-        // Create new comment
-        Comment comment = new Comment(commentRequest.getContent(), user, post);
-        commentRepository.save(comment);
-        
-        return ResponseEntity.status(HttpStatus.CREATED).body(comment);
+        return commentService.createComment(postId, commentRequest, currentUserId);
     }
     
     /**
@@ -107,43 +73,7 @@ public class CommentController {
             size = MAX_PAGE_SIZE;
         }
         
-        // Get post
-        Post post = postRepository.findById(postId)
-                .orElseThrow(() -> new RuntimeException("Error: Post not found."));
-        
-        // Check if user has permission to view this post
-        boolean isOwner = post.getUser().getId().equals(currentUserId);
-        boolean isFriend = friendshipService.areFriends(currentUserId, post.getUser().getId());
-        
-        if ((post.isPrivate() || post.getUser().isPrivateProfile()) && !isOwner && !isFriend) {
-            return ResponseEntity
-                    .status(HttpStatus.FORBIDDEN)
-                    .body(new MessageResponse("Error: You don't have permission to view this post's comments."));
-        }
-        
-        // Create pageable object for pagination
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        
-        // Get paginated comments for post
-        Page<Comment> commentPage = commentRepository.findByPost(post, pageable);
-        
-        // Create next page URL if not on the last page
-        String nextPageUrl = null;
-        if (!commentPage.isLast()) {
-            nextPageUrl = "/api/comments/posts/" + postId + "?page=" + (page + 1) + "&size=" + size;
-        }
-        
-        PagedResponse<Comment> response = new PagedResponse<>(
-                commentPage.getContent(),
-                commentPage.getNumber(),
-                commentPage.getSize(),
-                commentPage.getTotalElements(),
-                commentPage.getTotalPages(),
-                commentPage.isLast(),
-                nextPageUrl
-        );
-        
-        return new ResponseEntity<>(response, HttpStatus.OK);
+        return commentService.getCommentsByPostId(postId, page, size, currentUserId);
     }
     
     /**
@@ -155,22 +85,7 @@ public class CommentController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
-        // Get comment
-        Comment comment = commentRepository.findById(commentId)
-                .orElseThrow(() -> new RuntimeException("Error: Comment not found."));
-        
-        // Check if user is the owner of the comment
-        if (!comment.getUser().getId().equals(currentUserId)) {
-            return ResponseEntity
-                    .status(HttpStatus.FORBIDDEN)
-                    .body(new MessageResponse("Error: You don't have permission to update this comment."));
-        }
-        
-        // Update comment
-        comment.setContent(commentRequest.getContent());
-        commentRepository.save(comment);
-        
-        return ResponseEntity.ok(comment);
+        return commentService.updateComment(commentId, commentRequest, currentUserId);
     }
     
     /**
@@ -182,24 +97,7 @@ public class CommentController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
-        // Get comment
-        Comment comment = commentRepository.findById(commentId)
-                .orElseThrow(() -> new RuntimeException("Error: Comment not found."));
-        
-        // Check if user is the owner of the comment or the post
-        boolean isCommentOwner = comment.getUser().getId().equals(currentUserId);
-        boolean isPostOwner = comment.getPost().getUser().getId().equals(currentUserId);
-        
-        if (!isCommentOwner && !isPostOwner) {
-            return ResponseEntity
-                    .status(HttpStatus.FORBIDDEN)
-                    .body(new MessageResponse("Error: You don't have permission to delete this comment."));
-        }
-        
-        // Delete comment
-        commentRepository.delete(comment);
-        
-        return ResponseEntity.ok(new MessageResponse("Comment deleted successfully."));
+        return commentService.deleteComment(commentId, currentUserId);
     }
     
     /**
@@ -211,23 +109,26 @@ public class CommentController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         Long currentUserId = userDetails.getId();
         
-        // Get post
-        Post post = postRepository.findById(postId)
-                .orElseThrow(() -> new RuntimeException("Error: Post not found."));
+        return commentService.getCommentCount(postId, currentUserId);
+    }
+    
+    /**
+     * Get comments by current user
+     */
+    @GetMapping("/my-comments")
+    public ResponseEntity<?> getMyComments(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "30") int size) {
         
-        // Check if user has permission to view this post
-        boolean isOwner = post.getUser().getId().equals(currentUserId);
-        boolean isFriend = friendshipService.areFriends(currentUserId, post.getUser().getId());
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        Long currentUserId = userDetails.getId();
         
-        if ((post.isPrivate() || post.getUser().isPrivateProfile()) && !isOwner && !isFriend) {
-            return ResponseEntity
-                    .status(HttpStatus.FORBIDDEN)
-                    .body(new MessageResponse("Error: You don't have permission to view this post."));
+        // Validate and limit page size
+        if (size > MAX_PAGE_SIZE) {
+            size = MAX_PAGE_SIZE;
         }
         
-        // Get comment count
-        long commentCount = commentRepository.countByPost(post);
-        
-        return ResponseEntity.ok(new MessageResponse(String.valueOf(commentCount)));
+        return commentService.getCommentsByCurrentUser(page, size, currentUserId);
     }
 } 

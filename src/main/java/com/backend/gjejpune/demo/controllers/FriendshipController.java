@@ -46,7 +46,7 @@ public class FriendshipController {
         }
         
         try {
-            Friendship friendship = friendshipService.sendFriendRequest(currentUserId, userId);
+            friendshipService.sendFriendRequest(currentUserId, userId);
             return ResponseEntity.ok(new MessageResponse("Friend request sent successfully."));
         } catch (RuntimeException e) {
             return ResponseEntity
@@ -65,7 +65,7 @@ public class FriendshipController {
         Long currentUserId = userDetails.getId();
         
         try {
-            Friendship friendship = friendshipService.acceptFriendRequest(friendshipId, currentUserId);
+            friendshipService.acceptFriendRequest(friendshipId, currentUserId);
             return ResponseEntity.ok(new MessageResponse("Friend request accepted successfully."));
         } catch (RuntimeException e) {
             return ResponseEntity
@@ -84,7 +84,7 @@ public class FriendshipController {
         Long currentUserId = userDetails.getId();
         
         try {
-            Friendship friendship = friendshipService.rejectFriendRequest(friendshipId, currentUserId);
+            friendshipService.rejectFriendRequest(friendshipId, currentUserId);
             return ResponseEntity.ok(new MessageResponse("Friend request rejected successfully."));
         } catch (RuntimeException e) {
             return ResponseEntity

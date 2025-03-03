@@ -187,11 +187,43 @@ public class GlobalExceptionHandler {
                 ));
     }
     
+    @ExceptionHandler(ForbiddenProfileException.class)
+    public ResponseEntity<?> handleForbiddenProfileException(ForbiddenProfileException ex, WebRequest request) {
+        String path = request.getDescription(false).substring(4);
+        
+        logger.warn("Forbidden profile access attempt for path: {}", path);
+        
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse(
+                    HttpStatus.FORBIDDEN.value(),
+                    ex.getMessage(),
+                    path
+                ));
+    }
+    
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<?> handleRuntimeException(RuntimeException ex, WebRequest request) {
+        if (ex.getMessage().contains("User not found") || 
+            ex.getMessage().contains("Post not found") ||
+            ex.getMessage().contains("Comment not found") ||
+            ex.getMessage().contains("Like not found") ||
+            ex.getMessage().contains("Friendship not found")) {
+            return ResponseEntity
+                    .status(HttpStatus.NOT_FOUND)
+                    .body(new MessageResponse(ex.getMessage()));
+        }
+        
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new MessageResponse("An unexpected error occurred: " + ex.getMessage()));
+    }
+    
     /**
      * Handle all other exceptions
      */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<?> handleAllExceptions(Exception ex, WebRequest request) {
+    public ResponseEntity<?> handleGlobalException(Exception ex, WebRequest request) {
         String path = request.getDescription(false).substring(4);
         String errorMessage = "An unexpected error occurred";
         
@@ -199,10 +231,6 @@ public class GlobalExceptionHandler {
         
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ErrorResponse(
-                    HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                    errorMessage,
-                    path
-                ));
+                .body(new MessageResponse("An unexpected error occurred: " + ex.getMessage()));
     }
 } 
